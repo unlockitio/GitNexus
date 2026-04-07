@@ -157,7 +157,13 @@ export class GroupService {
 
     const allProcesses = perRepo.flatMap((r) => r.processes as Array<Record<string, unknown>>);
     allProcesses.sort((a, b) => (b._rrf_score as number) - (a._rrf_score as number));
-    const topN = allProcesses.slice(0, limit);
+    const topN = allProcesses.slice(0, limit).map((p) => {
+      const { _repo, _rrf_score, ...rest } = p;
+      return {
+        ...rest,
+        repo: _repo,
+      };
+    });
 
     return {
       group: name,
