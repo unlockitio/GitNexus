@@ -27,6 +27,7 @@ import {
   type RegistryEntry,
 } from '../../storage/repo-manager.js';
 import { GroupService, type GroupToolPort } from '../../core/group/service.js';
+import { relativizeFilePaths } from '../path-utils.js';
 // AI context generation is CLI-only (gitnexus analyze)
 // import { generateAIContextFiles } from '../../cli/ai-context.js';
 
@@ -181,6 +182,13 @@ export class LocalBackend {
   private reinitPromises: Map<string, Promise<void>> = new Map();
   private lastStalenessCheck: Map<string, number> = new Map();
   private groupToolSvc: GroupService | null = null;
+
+  private finalizeResult<T>(repo: RepoHandle, result: T): T {
+    if (process.env.GITNEXUS_RELATIVE_PATHS === '1') {
+      relativizeFilePaths(result, repo.repoPath);
+    }
+    return result;
+  }
 
   /**
    * Cross-repo group tools (CLI). Shares logic with MCP `group_*` handlers.
@@ -739,7 +747,7 @@ export class LocalBackend {
       return true;
     });
 
-    return {
+    return this.finalizeResult(repo, {
       processes,
       process_symbols: dedupedSymbols,
       definitions: definitions.slice(0, 20), // cap standalone definitions
@@ -747,7 +755,7 @@ export class LocalBackend {
         warning:
           'FTS extension unavailable - keyword search degraded. Run: gitnexus analyze --force to rebuild indexes.',
       }),
-    };
+    });
   }
 
   /**
@@ -1182,7 +1190,7 @@ export class LocalBackend {
     }
 
     if (symbols.length > 1 && !uid) {
-      return {
+      return this.finalizeResult(repo, {
         status: 'ambiguous',
         message: `Found ${symbols.length} symbols matching '${name}'. Use uid or file_path to disambiguate.`,
         candidates: symbols.map((s: any) => ({
@@ -1192,7 +1200,7 @@ export class LocalBackend {
           filePath: s.filePath || s[3],
           line: s.startLine || s[4],
         })),
-      };
+      });
     }
 
     // Step 3: Build full context
@@ -1369,7 +1377,7 @@ export class LocalBackend {
       }
     }
 
-    return {
+    return this.finalizeResult(repo, {
       status: 'found',
       symbol: {
         uid: sym.id || sym[0],
@@ -1389,7 +1397,7 @@ export class LocalBackend {
         step_index: r.step || r[2],
         step_count: r.stepCount || r[3],
       })),
-    };
+    });
   }
 
   /**
@@ -1446,7 +1454,7 @@ export class LocalBackend {
         { clusterName: name },
       );
 
-      return {
+      return this.finalizeResult(repo, {
         cluster: {
           id: rawClusters[0].id,
           label: rawClusters[0].heuristicLabel || rawClusters[0].label,
@@ -1460,7 +1468,7 @@ export class LocalBackend {
           type: m.type || m[1],
           filePath: m.filePath || m[2],
         })),
-      };
+      });
     }
 
     if (type === 'process') {
@@ -1488,7 +1496,7 @@ export class LocalBackend {
         { procId },
       );
 
-      return {
+      return this.finalizeResult(repo, {
         process: {
           id: procId,
           label: proc.label || proc[1],
@@ -1502,7 +1510,7 @@ export class LocalBackend {
           type: s.type || s[1],
           filePath: s.filePath || s[2],
         })),
-      };
+      });
     }
 
     return { error: 'Invalid type. Use: symbol, cluster, or process' };
@@ -1638,7 +1646,7 @@ export class LocalBackend {
             ? 'high'
             : 'critical';
 
-    return {
+    return this.finalizeResult(repo, {
       summary: {
         changed_count: changedSymbols.length,
         affected_count: processCount,
@@ -1647,7 +1655,7 @@ export class LocalBackend {
       },
       changed_symbols: changedSymbols,
       affected_processes: Array.from(affectedProcesses.values()),
-    };
+    });
   }
 
   /**
@@ -1859,7 +1867,7 @@ export class LocalBackend {
       }
     }
 
-    return {
+    return this.finalizeResult(repo, {
       status: 'success',
       old_name: oldName,
       new_name,
@@ -1869,7 +1877,7 @@ export class LocalBackend {
       text_search_edits: astSearchEdits,
       changes: allChanges,
       applied: !dry_run,
-    };
+    });
   }
 
   private async impact(
@@ -2415,7 +2423,7 @@ export class LocalBackend {
       risk = 'MEDIUM';
     }
 
-    return {
+    return this.finalizeResult(repo, {
       target: {
         id: symId,
         name: sym.name || sym[1],
@@ -2434,7 +2442,7 @@ export class LocalBackend {
       affected_processes: affectedProcesses,
       affected_modules: affectedModules,
       byDepth: grouped,
-    };
+    });
   }
 
   /**
@@ -2733,7 +2741,7 @@ export class LocalBackend {
       routes.map((r) => r.id),
     );
 
-    return {
+    return this.finalizeResult(repo, {
       routes: routes.map((r) => ({
         route: r.name,
         handler: r.filePath,
@@ -2742,7 +2750,7 @@ export class LocalBackend {
         flows: flowMap.get(r.id) || [],
       })),
       total: routes.length,
-    };
+    });
   }
 
   private async shapeCheck(repo: RepoHandle, params: { route?: string }): Promise<any> {
@@ -2813,7 +2821,7 @@ export class LocalBackend {
 
     const mismatchCount = results.filter((r) => r.status === 'MISMATCH').length;
 
-    return {
+    return this.finalizeResult(repo, {
       routes: results,
       total: results.length,
       routesWithShapes: results.length,
@@ -2824,7 +2832,7 @@ export class LocalBackend {
           : mismatchCount > 0
             ? `Found ${results.length} route(s) with response shape data. ${mismatchCount} route(s) have consumer/shape mismatches.`
             : `Found ${results.length} route(s) with response shape data and consumers.`,
-    };
+    });
   }
 
   private async toolMap(repo: RepoHandle, params: { tool?: string }): Promise<any> {
@@ -2854,7 +2862,7 @@ export class LocalBackend {
     const toolIds = rows.map((r: any) => r.id ?? r[0]);
     const flowMap = await this.fetchLinkedFlowsBatch(repo.id, toolIds);
 
-    return {
+    return this.finalizeResult(repo, {
       tools: rows.map((r: any) => {
         const id = r.id ?? r[0];
         return {
@@ -2865,7 +2873,7 @@ export class LocalBackend {
         };
       }),
       total: rows.length,
-    };
+    });
   }
 
   private async apiImpact(
@@ -3010,10 +3018,10 @@ export class LocalBackend {
 
     // If a single route was targeted, return it directly (not wrapped in array)
     if (results.length === 1) {
-      return results[0];
+      return this.finalizeResult(repo, results[0]);
     }
 
-    return { routes: results, total: results.length };
+    return this.finalizeResult(repo, { routes: results, total: results.length });
   }
 
   // ─── Direct Graph Queries (for resources.ts) ────────────────────
@@ -3128,7 +3136,7 @@ export class LocalBackend {
       { clusterName: name },
     );
 
-    return {
+    return this.finalizeResult(repo, {
       cluster: {
         id: rawClusters[0].id,
         label: rawClusters[0].heuristicLabel || rawClusters[0].label,
@@ -3142,7 +3150,7 @@ export class LocalBackend {
         type: m.type || m[1],
         filePath: m.filePath || m[2],
       })),
-    };
+    });
   }
 
   /**
@@ -3177,7 +3185,7 @@ export class LocalBackend {
       { procId },
     );
 
-    return {
+    return this.finalizeResult(repo, {
       process: {
         id: procId,
         label: proc.label || proc[1],
@@ -3191,7 +3199,7 @@ export class LocalBackend {
         type: s.type || s[1],
         filePath: s.filePath || s[2],
       })),
-    };
+    });
   }
 
   async disconnect(): Promise<void> {
