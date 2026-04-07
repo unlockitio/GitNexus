@@ -247,6 +247,41 @@ GitNexus also has a browser-based UI at [gitnexus.vercel.app](https://gitnexus.v
 
 **Local Backend Mode:** Run `gitnexus serve` and open the web UI locally — it auto-detects the server and shows all your indexed repos, with full AI chat support. No need to re-upload or re-index. The agent's tools (Cypher queries, search, code navigation) route through the backend HTTP API automatically.
 
+## Fork Changes
+
+This fork adds features for shared / Dockerized deployment.
+
+### Relative Paths (`GITNEXUS_RELATIVE_PATHS`)
+
+When `GITNEXUS_RELATIVE_PATHS=1` is set, all tool outputs return file paths relative to the repo root instead of absolute paths.
+
+**Why:** In a shared MCP server deployment (e.g. Docker container serving multiple developers), the server indexes repos at paths like `/srv/repos/brani`. Developer machines have local clones at arbitrary paths like `~/u/brani`. Returning absolute paths from the server breaks file navigation on client machines. Repo-relative paths resolve correctly from any local checkout.
+
+**Env var:** `GITNEXUS_RELATIVE_PATHS=1`
+
+**Affected outputs:** `query`, `context`, `impact`, `detectChanges`, `rename`, `routeMap`, `shapeCheck`, `toolMap`, `apiImpact`, cluster detail, process detail, and MCP resources.
+
+**Example:**
+
+```
+# Without GITNEXUS_RELATIVE_PATHS:
+filePath: "/srv/repos/brani/src/auth/UserService.ts"
+
+# With GITNEXUS_RELATIVE_PATHS=1:
+filePath: "src/auth/UserService.ts"
+```
+
+### Cross-Repo `repo` Field
+
+`group_query` now exposes `repo` on each result symbol for disambiguation when results span multiple repos.
+
+### Files Changed
+
+- `src/mcp/path-utils.ts` — `relativizeFilePaths()` helper
+- `src/mcp/local/local-backend.ts` — `finalizeResult()` wrapper around all tool returns
+- `src/mcp/resources.ts` — resource output relativization
+- `src/core/group/service.ts` — `repo` field in `group_query` results
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
