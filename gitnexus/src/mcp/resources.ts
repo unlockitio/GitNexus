@@ -6,6 +6,7 @@
  */
 
 import type { LocalBackend } from './local/local-backend.js';
+import { relativizeFilePaths } from './path-utils.js';
 import { checkStaleness } from './staleness.js';
 
 export interface ResourceDefinition {
@@ -387,6 +388,7 @@ async function getClusterDetailResource(
   repoName?: string,
 ): Promise<string> {
   try {
+    const repo = await backend.resolveRepo(repoName);
     const result = await backend.queryClusterDetail(name, repoName);
 
     if (result.error) {
@@ -395,6 +397,9 @@ async function getClusterDetailResource(
 
     const cluster = result.cluster;
     const members = result.members || [];
+    if (process.env.GITNEXUS_RELATIVE_PATHS === '1') {
+      relativizeFilePaths(members, repo.repoPath);
+    }
 
     const lines: string[] = [
       `module: "${cluster.heuristicLabel || cluster.label || cluster.id}"`,
@@ -433,6 +438,7 @@ async function getProcessDetailResource(
   repoName?: string,
 ): Promise<string> {
   try {
+    const repo = await backend.resolveRepo(repoName);
     const result = await backend.queryProcessDetail(name, repoName);
 
     if (result.error) {
@@ -441,6 +447,9 @@ async function getProcessDetailResource(
 
     const proc = result.process;
     const steps = result.steps || [];
+    if (process.env.GITNEXUS_RELATIVE_PATHS === '1') {
+      relativizeFilePaths(steps, repo.repoPath);
+    }
 
     const lines: string[] = [
       `name: "${proc.heuristicLabel || proc.label || proc.id}"`,
